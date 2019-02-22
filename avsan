@@ -1,0 +1,179 @@
+#!/usr/bin/env python3
+
+# Tool to perform sanity check on vault encrypted strings inside yml files.
+
+import sys
+
+class Secret(object):
+    def __init__(self, file, line, content, title):
+        self.file = file
+        self.line = line
+        self.content = content
+        self.title = title
+
+    def getFilename(self):
+        return self.file
+
+    def getLineNumber(self):
+        return self.line
+
+    def getTitle(self):
+        return self.title
+
+    def getSecret(self):
+        return self.content.rstrip()
+
+
+    def __str__(self):
+        head = '{}:{}\n'.format(self.file, self.line)
+        # if self.title:
+        # title = '{}\n'.format(self.title.replace('\t', '').replace(' ', ''))
+        title = '{}\n'.format(self.title)
+
+        # body = '{}\n'.format(self.content.replace('\t', '').replace(' ', ''))
+        body = '{}\n'.format(self.content.replace('\t', '').replace(' ', ''))
+        return head + title + body
+
+
+class EncDec(object):
+    def __init__(self):
+        self._secrets = []
+        self.secret_header = '$ANSIBLE_VAULT;1.1;AES256'
+        self.secret = None
+        self.prev_line = None
+        self.title = None
+
+    def setFiles(self, files_list):
+        assert(files_list)
+        self.files_list = files_list
+
+    def run(self):
+        for self.f_name in files_list:
+            self.secret = 'sdsdsd'
+            self.prev_line = None
+            self.title = ''
+            with open(self.f_name, 'r') as f:
+                self.collectSecrets(f)
+
+    def collectSecrets(self, file_obj):
+        assert(file_obj)
+        found = False
+        for line_no, line in enumerate(file_obj.readlines()):
+            if not found:
+                if self.secret_header in line:
+                    self.line_no = line_no
+
+                    # Whole file encrypted detected
+                    if line_no == 0:
+                        self.title = 'Whole file'
+
+                    if self.prev_line:
+                        self.title = self.prev_line
+
+                    self.secret = line
+                    found = True
+            else:
+                if ':' in line:
+                    found = False
+                    self.addSecret()
+                    self.printSecret()
+                else:
+                    self.secret += line
+            #if
+            self.prev_line = line
+        #for
+        self.addSecret()
+        self.printSecret()
+
+    def addSecret(self):
+        sec = Secret(self.f_name, self.line_no, self.secret, self.title)
+        self._secrets.append(sec)
+                    
+    def printSecret(self):
+        sec = self._secrets[-1]
+        print(str(sec))
+
+    
+if __name__ == '__main__':
+    if len(sys.argv) == 1:
+        print('Usage: script file1.yml file2.yml')
+    
+    files_list = sys.argv[1:]
+    print(files_list)
+    
+    ed = EncDec()
+    ed.setFiles(sys.argv)
+    ed.run()
+    
+
+
+import unittest
+
+
+class test_enddec(unittest.TestCase):
+    def setUp(self):
+        pass
+
+    def test_whole_file_encrypted(self):
+        import io
+        buf = io.StringIO('$ANSIBLE_VAULT;1.1;AES256\n12345\n67890')
+
+        ed = EncDec()
+        ed.f_name = 'file1'
+        ed.collectSecrets(buf)
+        self.assertEqual(len(ed._secrets), 1)
+        self.assertEqual(ed._secrets[0].getFilename(), 'file1')
+        self.assertEqual(ed._secrets[0].getLineNumber(), 0)
+        self.assertEqual(ed._secrets[0].getTitle(), 'Whole file')
+        self.assertEqual(ed._secrets[0].getSecret(), '$ANSIBLE_VAULT;1.1;AES256\n12345\n67890')
+
+
+    def test_multiple_strings_in_file(self):
+        import io
+        buf = io.StringIO('param2: !vault |\n'
+                          '  $ANSIBLE_VAULT;1.1;AES256\n'
+                          '  12345\n'
+                          '  67890\n'
+                          'param3: something\n'
+                          'param4: !vault |\n'
+                          '  $ANSIBLE_VAULT;1.1;AES256\n'
+                          '  98765\n'
+                          '  43210\n\n'
+                          )
+
+        ed = EncDec()
+        ed.f_name = 'file1'
+        ed.collectSecrets(buf)
+        self.assertEqual(len(ed._secrets), 2)
+        self.assertEqual(ed._secrets[0].getLineNumber(), 1)
+        self.assertEqual(ed._secrets[0].getTitle(), 'param2: !vault |\n')
+        self.assertEqual(ed._secrets[0].getSecret(), '  $ANSIBLE_VAULT;1.1;AES256\n'
+                                                     '  12345\n'
+                                                     '  67890')
+
+
+        self.assertEqual(ed._secrets[1].getLineNumber(), 6)
+        self.assertEqual(ed._secrets[1].getTitle(), 'param4: !vault |\n')
+        self.assertEqual(ed._secrets[1].getSecret(), '  $ANSIBLE_VAULT;1.1;AES256\n'
+                                                     '  98765\n'
+                                                     '  43210')
+
+
+    def test_string_at_end_of_file(self):
+        import io
+        buf = io.StringIO('param: !vault |\n'
+                          '  $ANSIBLE_VAULT;1.1;AES256\n'
+                          '  12345\n'
+                          '  67890')
+
+        ed = EncDec()
+        ed.f_name = 'file2'
+        ed.collectSecrets(buf)
+        self.assertEqual(len(ed._secrets), 1)
+        self.assertEqual(ed._secrets[0].getFilename(), 'file2')
+        self.assertEqual(ed._secrets[0].getLineNumber(), 1)
+        self.assertEqual(ed._secrets[0].getTitle(), 'param: !vault |\n')
+        print(ed._secrets[0].getSecret())
+        self.assertEqual(ed._secrets[0].getSecret(), '  $ANSIBLE_VAULT;1.1;AES256\n'
+                                                     '  12345\n'
+                                                     '  67890')
