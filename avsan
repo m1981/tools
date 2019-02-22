@@ -43,10 +43,14 @@ class EncDec(object):
     def __init__(self):
         self._secrets = []
         self.secret_header = '$ANSIBLE_VAULT;1.1;AES256'
-        self.secret = None
-        self.prev_line = None
-        self.title = None
+        self.resetMembers()
         self.setupLog()
+
+    def resetMembers(self):
+        self.title = None
+        self.secret = None
+        self.f_name = None
+        self.prev_line = None
 
     def setFiles(self, files_list):
         assert(files_list)
@@ -78,11 +82,7 @@ class EncDec(object):
                     self.secret = line
                     found = True
             else:
-                if ':' in line:
-                    found = False
-                    self.addSecret()
-                    self.printSecret()
-                elif line == '\n':
+                if ':' in line or line == '\n':
                     found = False
                     self.addSecret()
                     self.printSecret()
@@ -98,22 +98,15 @@ class EncDec(object):
     def addSecret(self):
         sec = Secret(self.f_name, self.line_no, self.secret, self.title)
         self._secrets.append(sec)
-        self.title = None
-        self.secret = None
-        self.line_no = None
-        self.f_name = None
-                    
+        self.resetMembers()
+
     def printSecret(self):
         return
-        print(len(self._secrets))
         sec = self._secrets[-1]
         print(str(sec))
 
+        # Decode secrets
         import subprocess as sp
-        # cmd = "printf '%s' '{}' | echo ".format('abc')
-        import io
-        # cmd = ['ansible-vault', 'decrypt']
-        # print('CMD:\n>>{}<<\n'.format(sec.getSecret(stripped=True)))
         cmd = ['ansible-vault', 'decrypt']
         response = sp.run(cmd,
                           input=sec.getSecret(stripped=True).encode(),
