@@ -83,21 +83,29 @@ class EncDec(object):
                     self.addSecret()
                     self.printSecret()
                 elif line == '\n':
-                    break
+                    found = False
+                    self.addSecret()
+                    self.printSecret()
                 else:
                     self.secret += line
             #if
             self.prev_line = line
         #for
-        self.addSecret()
-        self.printSecret()
+        if self.secret:
+            self.addSecret()
+            self.printSecret()
 
     def addSecret(self):
         sec = Secret(self.f_name, self.line_no, self.secret, self.title)
         self._secrets.append(sec)
+        self.title = None
+        self.secret = None
+        self.line_no = None
+        self.f_name = None
                     
     def printSecret(self):
         return
+        print(len(self._secrets))
         sec = self._secrets[-1]
         print(str(sec))
 
@@ -105,7 +113,7 @@ class EncDec(object):
         # cmd = "printf '%s' '{}' | echo ".format('abc')
         import io
         # cmd = ['ansible-vault', 'decrypt']
-        print('CMD:\n>>{}<<\n'.format(sec.getSecret(stripped=True)))
+        # print('CMD:\n>>{}<<\n'.format(sec.getSecret(stripped=True)))
         cmd = ['ansible-vault', 'decrypt']
         response = sp.run(cmd,
                           input=sec.getSecret(stripped=True).encode(),
@@ -214,15 +222,23 @@ class test_enddec(unittest.TestCase):
                           '  $ANSIBLE_VAULT;1.1;AES256\n'
                           '  12345\n'
                           '  67890\n\n'
-                          'something')
+                          'something\n'
+                          '$ANSIBLE_VAULT;1.1;AES256\n'
+                          '888888\n'
+                          '999999\n'
+        )
 
         ed = EncDec()
         ed.f_name = 'file1'
         ed.collectSecrets(buf)
-        self.assertEqual(len(ed._secrets), 1)
+        self.assertEqual(len(ed._secrets), 2)
         self.assertEqual(ed._secrets[0].getLineNumber(), 1)
         self.assertEqual(ed._secrets[0].getTitle(), 'param: !vault |\n')
         print(ed._secrets[0].getSecret())
         self.assertEqual(ed._secrets[0].getSecret(), '  $ANSIBLE_VAULT;1.1;AES256\n'
                                                      '  12345\n'
                                                      '  67890')
+
+        self.assertEqual(ed._secrets[1].getSecret(), '$ANSIBLE_VAULT;1.1;AES256\n'
+                                                     '888888\n'
+                                                     '999999')
