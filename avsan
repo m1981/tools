@@ -3,6 +3,7 @@
 # Tool to perform sanity check on vault encrypted strings inside yml files.
 
 import sys
+import os
 
 class Secret(object):
     def __init__(self, file, line, content, title):
@@ -20,8 +21,12 @@ class Secret(object):
     def getTitle(self):
         return self.title
 
-    def getSecret(self):
-        return self.content.rstrip()
+    def getSecret(self, stripped=False):
+        ret = self.content
+        if stripped:
+            ret = ret.replace('\t', '').replace(' ', '')
+        return ret.rstrip()
+
 
 
     def __str__(self):
@@ -30,8 +35,7 @@ class Secret(object):
         # title = '{}\n'.format(self.title.replace('\t', '').replace(' ', ''))
         title = '{}\n'.format(self.title)
 
-        # body = '{}\n'.format(self.content.replace('\t', '').replace(' ', ''))
-        body = '{}\n'.format(self.content.replace('\t', '').replace(' ', ''))
+        body = '{}\n'.format(self.getSecret(stripped=True))
         return head + title + body
 
 
@@ -42,6 +46,7 @@ class EncDec(object):
         self.secret = None
         self.prev_line = None
         self.title = None
+        self.setupLog()
 
     def setFiles(self, files_list):
         assert(files_list)
@@ -77,6 +82,8 @@ class EncDec(object):
                     found = False
                     self.addSecret()
                     self.printSecret()
+                elif line == '\n':
+                    break
                 else:
                     self.secret += line
             #if
@@ -90,10 +97,33 @@ class EncDec(object):
         self._secrets.append(sec)
                     
     def printSecret(self):
+        return
         sec = self._secrets[-1]
         print(str(sec))
 
-    
+        import subprocess as sp
+        # cmd = "printf '%s' '{}' | echo ".format('abc')
+        import io
+        # cmd = ['ansible-vault', 'decrypt']
+        print('CMD:\n>>{}<<\n'.format(sec.getSecret(stripped=True)))
+        cmd = ['ansible-vault', 'decrypt']
+        response = sp.run(cmd,
+                          input=sec.getSecret(stripped=True).encode(),
+                          cwd='/tmp',
+                          env=dict(os.environ)
+                          )
+        if response.returncode:
+            self.LogError('{}\n{}\n\n'.format('Decryption failed', str(sec)))
+
+    def setupLog(self):
+        with open('vault_errors.txt', 'w') as f:
+            pass
+
+    def LogError(self, str):
+        with open('vault_errors.txt', 'a') as f:
+            f.write(str)
+
+
 if __name__ == '__main__':
     if len(sys.argv) == 1:
         print('Usage: script file1.yml file2.yml')
@@ -171,6 +201,25 @@ class test_enddec(unittest.TestCase):
         ed.collectSecrets(buf)
         self.assertEqual(len(ed._secrets), 1)
         self.assertEqual(ed._secrets[0].getFilename(), 'file2')
+        self.assertEqual(ed._secrets[0].getLineNumber(), 1)
+        self.assertEqual(ed._secrets[0].getTitle(), 'param: !vault |\n')
+        print(ed._secrets[0].getSecret())
+        self.assertEqual(ed._secrets[0].getSecret(), '  $ANSIBLE_VAULT;1.1;AES256\n'
+                                                     '  12345\n'
+                                                     '  67890')
+
+    def test_string_ended_new_line(self):
+        import io
+        buf = io.StringIO('param: !vault |\n'
+                          '  $ANSIBLE_VAULT;1.1;AES256\n'
+                          '  12345\n'
+                          '  67890\n\n'
+                          'something')
+
+        ed = EncDec()
+        ed.f_name = 'file1'
+        ed.collectSecrets(buf)
+        self.assertEqual(len(ed._secrets), 1)
         self.assertEqual(ed._secrets[0].getLineNumber(), 1)
         self.assertEqual(ed._secrets[0].getTitle(), 'param: !vault |\n')
         print(ed._secrets[0].getSecret())
