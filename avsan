@@ -30,13 +30,14 @@ class Secret(object):
 
 
     def __str__(self):
-        head = '{}:{}\n'.format(self.file, self.line)
-        # if self.title:
-        # title = '{}\n'.format(self.title.replace('\t', '').replace(' ', ''))
-        title = '{}\n'.format(self.title)
+        ret = ''
 
-        body = '{}\n'.format(self.getSecret(stripped=True))
-        return head + title + body
+        ret = '\n{}:{}\n--------'.format(self.file, self.line)
+        if self.title:
+            ret += '{}\n'.format(self.title)
+        body = '{}'.format(self.getSecret(stripped=True))
+        ret += body
+        return ret
 
 
 class EncDec(object):
@@ -49,7 +50,6 @@ class EncDec(object):
     def resetMembers(self):
         self.title = None
         self.secret = None
-        self.f_name = None
         self.prev_line = None
 
     def setFiles(self, files_list):
@@ -103,7 +103,7 @@ class EncDec(object):
     def printSecret(self):
         return
         sec = self._secrets[-1]
-        print(str(sec))
+        print('\n' + str(sec))
 
         # Decode secrets
         import subprocess as sp
@@ -173,9 +173,10 @@ class test_enddec(unittest.TestCase):
                           )
 
         ed = EncDec()
-        ed.f_name = 'file1'
+        ed.f_name = 'file123'
         ed.collectSecrets(buf)
         self.assertEqual(len(ed._secrets), 2)
+        self.assertEqual(ed._secrets[0].getFilename(), 'file123')
         self.assertEqual(ed._secrets[0].getLineNumber(), 1)
         self.assertEqual(ed._secrets[0].getTitle(), 'param2: !vault |\n')
         self.assertEqual(ed._secrets[0].getSecret(), '  $ANSIBLE_VAULT;1.1;AES256\n'
@@ -183,6 +184,7 @@ class test_enddec(unittest.TestCase):
                                                      '  67890')
 
 
+        self.assertEqual(ed._secrets[1].getFilename(), 'file123')
         self.assertEqual(ed._secrets[1].getLineNumber(), 6)
         self.assertEqual(ed._secrets[1].getTitle(), 'param4: !vault |\n')
         self.assertEqual(ed._secrets[1].getSecret(), '  $ANSIBLE_VAULT;1.1;AES256\n'
@@ -222,16 +224,17 @@ class test_enddec(unittest.TestCase):
         )
 
         ed = EncDec()
-        ed.f_name = 'file1'
+        ed.f_name = 'file987'
         ed.collectSecrets(buf)
         self.assertEqual(len(ed._secrets), 2)
+        self.assertEqual(ed._secrets[0].getFilename(), 'file987')
         self.assertEqual(ed._secrets[0].getLineNumber(), 1)
         self.assertEqual(ed._secrets[0].getTitle(), 'param: !vault |\n')
-        print(ed._secrets[0].getSecret())
         self.assertEqual(ed._secrets[0].getSecret(), '  $ANSIBLE_VAULT;1.1;AES256\n'
                                                      '  12345\n'
                                                      '  67890')
 
+        self.assertEqual(ed._secrets[1].getFilename(), 'file987')
         self.assertEqual(ed._secrets[1].getSecret(), '$ANSIBLE_VAULT;1.1;AES256\n'
                                                      '888888\n'
                                                      '999999')
